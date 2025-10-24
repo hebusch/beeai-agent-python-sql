@@ -79,9 +79,15 @@ spec:
             #       key: password
           
           volumeMounts:
-            # Montar el storage compartido en /app/tmp
+            # Montar el storage compartido en /app/tmp/code_interpreter
+            # El code interpreter guarda archivos directamente en /storage (la raíz del volumen)
+            # que se mapea a /var/lib/beeai/storage en el host
             - name: storage-volume
-              mountPath: /app/tmp
+              mountPath: /app/tmp/code_interpreter
+            # También montar un subdirectorio para code_interpreter_source
+            - name: storage-volume
+              mountPath: /app/tmp/code_interpreter_source
+              subPath: code_interpreter_source
           
           resources:
             requests:
