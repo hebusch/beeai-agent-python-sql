@@ -36,7 +36,7 @@ spec:
             
             # URL de la plataforma BeeAI
             - name: PLATFORM_URL
-              value: "http://beeai-platform:8334"
+              value: "http://beeai-platform-svc:8333"
             
             # Modelo LLM a usar
             - name: LLM_CHAT_MODEL_NAME
