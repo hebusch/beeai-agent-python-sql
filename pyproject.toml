@@ -6,8 +6,10 @@ readme = "README.md"
 authors = [{ name = "IBM Corp." }]
 requires-python = ">=3.11,<4.0"
 dependencies = [
-    "beeai-sdk>=0.3.2",
+    "beeai-sdk>=0.3.7",
+    "beeai-framework[all]>=0.1.58,<0.2.0",
     "pyyaml>=6.0.2",
+    "httpx>=0.27.0",
 ]
 
 [tool.ruff]
@@ -24,4 +26,26 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "watchfiles>=1.1.0",
+    "poethepoet>=0.32.2,<0.33.0",
 ]
+
+[tool.poe.tasks.infra]
+help = "Manage code interpreter infrastructure"
+args = ["type"]
+control.expr = "type"
+
+    [[tool.poe.tasks.infra.switch]]
+    case = "pull"
+    cmd = "docker compose --profile=all pull"
+
+    [[tool.poe.tasks.infra.switch]]
+    case = "start"
+    cmd = "docker compose --profile=all up --detach --wait"
+
+    [[tool.poe.tasks.infra.switch]]
+    case = "stop"
+    cmd = "docker compose --profile=all down"
+
+    [[tool.poe.tasks.infra.switch]]
+    case = "remove"
+    cmd = "poe infra --type stop -- --volumes"
