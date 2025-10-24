@@ -119,8 +119,8 @@ async def example_agent(
     llm = ChatModel.from_name(
         model_name,
         ChatModelParameters(
-            temperature=0.0,  # Más determinista para evitar errores
-            max_tokens=1024  # Más tokens para respuestas complejas
+            temperature=0.0,
+            max_tokens=2048  # Máximo tokens para respuestas complejas y detalladas
         )
     )
 
