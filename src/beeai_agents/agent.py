@@ -12,9 +12,10 @@ from beeai_framework.backend.types import ChatModelParameters
 from beeai_framework.tools.think import ThinkTool
 from beeai_framework.tools.code import LocalPythonStorage, PythonTool
 from beeai_framework.tools import Tool
-
-from beeai_agents.fixed_python_tool import FixedPythonTool
 from beeai_framework.memory import UnconstrainedMemory, TokenMemory
+
+from tools.python_tool import FixedPythonTool
+from tools.psql_tool import PSQLTool
 
 from beeai_sdk.a2a.extensions import (
     AgentDetail,
@@ -54,12 +55,12 @@ def to_framework_message(message: Message) -> FrameworkMessage:
         raise ValueError(f"Invalid message role: {message.role}")
 
 @server.agent(
-    name="Agente de Prueba con Python",
+    name="Asistente IA con Python y PostgreSQL",
     default_input_modes=["text", "text/plain", "application/pdf", "text/csv", "application/json"],
     default_output_modes=["text", "text/plain", "image/png", "image/jpeg", "text/csv", "application/json"],
     detail=AgentDetail(
         ui_type="chat",
-        user_greeting="Hola! Agente de Prueba con Python",
+        user_greeting="Hola! Chat con Python y PostgreSQL",
         input_placeholder="Ask anything...",
         license="Apache 2.0",
         programming_language="python",
@@ -69,6 +70,10 @@ def to_framework_message(message: Message) -> FrameworkMessage:
                 name="Python Tool",
                 description="Ejecuta código Python",
             ),
+            AgentDetailTool(
+                name="PSQL Tool",
+                description="Ejecuta queries SQL en PostgreSQL",
+            ),
         ],
     )
 )
@@ -77,9 +82,9 @@ async def example_agent(
     context: RunContext,
     llm: Annotated[LLMServiceExtensionServer, LLMServiceExtensionSpec.single_demand()],
     trajectory: Annotated[TrajectoryExtensionServer, TrajectoryExtensionSpec()],
-    platform_api: Annotated[PlatformApiExtensionServer, PlatformApiExtensionSpec()]
+    platform_api: Annotated[PlatformApiExtensionServer, PlatformApiExtensionSpec()],
 ):
-    """Example agent with Python code execution capabilities"""
+    """Example agent with Python code execution and PostgreSQL capabilities"""
 
     #########################################################
     # Chat and messages context capabilities
@@ -146,6 +151,34 @@ async def example_agent(
     python_tool = FixedPythonTool(code_interpreter_url=code_interpreter_url, storage=storage)
 
     #########################################################
+    # PostgreSQL Tools Configuration
+    #########################################################
+
+    # Obtener credenciales de PostgreSQL desde variables de entorno
+    # Esto permite usar el PSQLTool sin necesitar la extensión de Secrets
+    psql_host = os.getenv("PSQL_HOST")
+    psql_port = int(os.getenv("PSQL_PORT", "5432"))
+    psql_username = os.getenv("PSQL_USERNAME")
+    psql_password = os.getenv("PSQL_PASSWORD")
+    
+    if psql_host and psql_username and psql_password:
+        print(f"Inicializando PSQL Tool:")
+        print(f"  - Host: {psql_host}")
+        print(f"  - Port: {psql_port}")
+        print(f"  - Username: {psql_username}")
+    else:
+        print(f"⚠️ PostgreSQL credentials not configured (set PSQL_HOST, PSQL_USERNAME, PSQL_PASSWORD env vars)")
+    
+    # Crear PSQLTool con las credenciales (si están disponibles)
+    # Si no están configuradas, el tool mostrará un error cuando se intente usar
+    psql_tool = PSQLTool(
+        host=psql_host,
+        port=psql_port,
+        username=psql_username,
+        password=psql_password
+    )
+
+    #########################################################
     # Agent Logic Here
     #########################################################
 
@@ -156,19 +189,22 @@ async def example_agent(
         llm=llm,
         role="AI Assistant",
         instructions=[
-            "You are a helpful assistant that can answer questions and execute Python code.",
+            "You are a helpful assistant that can answer questions, execute Python code, and query PostgreSQL databases.",
             "When the user asks for data, graphs or analysis, you should use the Python tool.",
-            "ALWAYS execute the necessary Python code before giving a final answer.",
+            "When the user asks for database queries or SQL operations, you should use the PSQL tool.",
+            "ALWAYS execute the necessary code/queries before giving a final answer.",
             "Python code must be written in English. No special characters. No accents.",
+            "SQL queries must be written in standard PostgreSQL syntax.",
             "ALWAYS USE THE TOOLS IN ENGLISH.",
-            "IMPORTAT: ALWAYS ANSWER THE USER IN SPANISH."
+            "IMPORTANT: ALWAYS ANSWER THE USER IN SPANISH."
+            "If the user asks for a graph, you should use the Python tool to generate the graph. AND ALWAYS GIVE THE USER THE LINK TO THE GRAPH."
         ],
-        tools=[ThinkTool(), python_tool],
+        tools=[ThinkTool(), python_tool, psql_tool],
         requirements=[
             ConditionalRequirement(
                 ThinkTool, 
                 force_at_step=1,
-                force_after=[python_tool],
+                force_after=[python_tool, psql_tool],
                 consecutive_allowed=False
             )
         ],
@@ -397,6 +433,53 @@ async def example_agent(
                         # Capturar archivos generados si existen
                         if hasattr(step.output, 'generated_files'):
                             all_generated_files.extend(step.output.generated_files)
+                
+                elif tool_name == "PSQL":
+                    # Extraer la query SQL que se ejecutará
+                    query = step.input.get('query', '')
+                    database = step.input.get('database', 'postgres')
+                    
+                    if query:
+                        content = f"Database: {database}\n\nQuery:\n```sql\n{query}\n```"
+                    else:
+                        content = "Ejecutando query SQL..."
+                    
+                    yield trajectory.trajectory_metadata(
+                        title="PSQLTool",
+                        content=content
+                    )
+                    
+                    # Verificar si hubo error
+                    if step.error:
+                        error_msg = str(step.error)
+                        
+                        # Construir un mensaje de error detallado
+                        error_details = f"**Error:** {error_msg}\n\n"
+                        error_details += "**Input recibido por el tool:**\n"
+                        
+                        for key, value in step.input.items():
+                            if key == 'query':
+                                # Mostrar solo primeras líneas de la query
+                                query_preview = str(value)[:300]
+                                if len(str(value)) > 300:
+                                    query_preview += "..."
+                                error_details += f"- {key}: {query_preview}\n"
+                            else:
+                                error_details += f"- {key}: {str(value)}\n"
+                        
+                        yield trajectory.trajectory_metadata(
+                            title="PSQLTool Error",
+                            content=error_details
+                        )
+                    # Mostrar output si está disponible
+                    elif step.output:
+                        # StringToolOutput tiene el texto en .result
+                        output_text = str(step.output.result) if hasattr(step.output, 'result') else str(step.output)
+                        if output_text and output_text.strip():
+                            yield trajectory.trajectory_metadata(
+                                title="PSQLTool Output",
+                                content=f"```\n{output_text}\n```"
+                            )
                 
                 elif tool_name == "final_answer":
                     final_answer_text = step.input["response"]
