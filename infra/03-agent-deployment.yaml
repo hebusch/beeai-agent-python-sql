@@ -19,7 +19,7 @@ spec:
         - name: agent
           # IMPORTANTE: Cambia esta imagen por la tuya después de buildear
           image: beeai-agent:latest
-          imagePullPolicy: IfNotPresent  # Para desarrollo local
+          imagePullPolicy: Never  # Siempre usa la imagen local (sin pull de registry)
           ports:
             - containerPort: 8000
               name: http
