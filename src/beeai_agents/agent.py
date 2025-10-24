@@ -57,12 +57,12 @@ def to_framework_message(message: Message) -> FrameworkMessage:
         raise ValueError(f"Invalid message role: {message.role}")
 
 @server.agent(
-    name="",
+    name="AI Chat",
     default_input_modes=["text", "text/plain", "application/pdf", "text/csv", "application/json"],
     default_output_modes=["text", "text/plain", "image/png", "image/jpeg", "text/csv", "application/json"],
     detail=AgentDetail(
         ui_type="chat",
-        user_greeting="Hola! Puedo ayudarte con Python, PostgreSQL, búsquedas web y Wikipedia. ¿En qué puedo ayudarte?",
+        user_greeting="Hola! ¿En qué puedo ayudarte?",
         input_placeholder="Pregúntame cualquier cosa...",
         license="Apache 2.0",
         programming_language="python",
@@ -596,25 +596,23 @@ async def example_agent(
                         )
                     # Mostrar output si está disponible
                     elif step.output:
-                        # WikipediaTool devuelve un objeto con title, summary, url
-                        if hasattr(step.output, 'title') and step.output.title:
-                            output_summary = f"**Artículo encontrado:** [{step.output.title}]({step.output.url})\n\n"
-                            
-                            # Mostrar un preview del summary (primeros 300 caracteres)
-                            if hasattr(step.output, 'summary') and step.output.summary:
-                                summary_preview = step.output.summary[:300]
-                                if len(step.output.summary) > 300:
-                                    summary_preview += "..."
-                                output_summary += f"{summary_preview}"
+                        # WikipediaTool devuelve un output con el contenido del artículo
+                        output_text = str(step.output.result) if hasattr(step.output, 'result') else str(step.output)
+                        
+                        if output_text and len(output_text) > 50:
+                            # Mostrar un preview del contenido (primeros 500 caracteres)
+                            content_preview = output_text[:500]
+                            if len(output_text) > 500:
+                                content_preview += "..."
                             
                             yield trajectory.trajectory_metadata(
                                 title="Wikipedia Result",
-                                content=output_summary
+                                content=f"Artículo encontrado exitosamente.\n\n{content_preview}"
                             )
                         else:
                             yield trajectory.trajectory_metadata(
                                 title="Wikipedia Result",
-                                content="No se encontró información en Wikipedia."
+                                content="Consultado exitosamente."
                             )
                 
                 elif tool_name == "final_answer":
