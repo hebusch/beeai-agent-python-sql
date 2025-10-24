@@ -9,7 +9,8 @@ ADD . /app
 WORKDIR /app
 
 # Instalar todas las dependencias
-RUN uv sync --no-cache --locked --link-mode copy
+# Nota: Usa 'docker build --no-cache' si quieres un build completamente limpio
+RUN uv sync --locked --link-mode copy
 
 ENV PRODUCTION_MODE=True \
     PATH="/app/.venv/bin:$PATH" \
