@@ -4,16 +4,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.7.15 /uv /bin/
 ENV UV_LINK_MODE=copy \
     PRODUCTION_MODE=true
 
+# Copiar todo el código
+ADD . /app
 WORKDIR /app
 
-# Copiar solo archivos de dependencias primero (para cachear la instalación)
-COPY pyproject.toml uv.lock README.md ./
-
-# Instalar dependencias (esta capa se cachea si no cambian pyproject.toml o uv.lock)
+# Instalar todas las dependencias
 RUN uv sync --no-cache --locked --link-mode copy
-
-# Ahora copiar el resto del código (cambios aquí no invalidan el caché de dependencias)
-COPY . .
 
 ENV PRODUCTION_MODE=True \
     PATH="/app/.venv/bin:$PATH" \
