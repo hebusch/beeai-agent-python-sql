@@ -11,7 +11,6 @@ from beeai_framework.backend import AssistantMessage, UserMessage, ChatModel
 from beeai_framework.backend.types import ChatModelParameters
 from beeai_framework.tools.think import ThinkTool
 from beeai_framework.tools.code import LocalPythonStorage, PythonTool
-from beeai_framework.tools.search.duckduckgo import DuckDuckGoSearchTool
 from beeai_framework.tools.search.wikipedia import WikipediaTool
 from beeai_framework.tools import Tool
 from beeai_framework.memory import UnconstrainedMemory, TokenMemory
@@ -62,16 +61,12 @@ def to_framework_message(message: Message) -> FrameworkMessage:
     default_output_modes=["text", "text/plain", "image/png", "image/jpeg", "text/csv", "application/json"],
     detail=AgentDetail(
         ui_type="chat",
-        user_greeting="Hola! ¿En qué puedo ayudarte?",
+        user_greeting="Hola! Puedo ayudarte con Python, PostgreSQL y Wikipedia. ¿En qué puedo ayudarte?",
         input_placeholder="Pregúntame cualquier cosa...",
         license="Apache 2.0",
         programming_language="python",
         framework="BeeAI",
         tools=[
-            AgentDetailTool(
-                name="DuckDuckGo Search",
-                description="Busca información actualizada en la web sobre cualquier tema, noticias y datos en tiempo real.",
-            ),
             AgentDetailTool(
                 name="Wikipedia",
                 description="Consulta conocimiento enciclopédico, definiciones, datos históricos y hechos generales.",
@@ -194,7 +189,6 @@ async def example_agent(
 
     # Inicializar herramientas de búsqueda
     print(f"Inicializando herramientas de búsqueda")
-    search_tool = DuckDuckGoSearchTool()
     wikipedia_tool = WikipediaTool()
     
     print(f"Inicializando agente")
@@ -204,12 +198,11 @@ async def example_agent(
         llm=llm,
         role="AI Assistant",
         instructions=[
-            "You are a helpful assistant that can answer questions, execute Python code, query PostgreSQL databases, search the web, and look up information on Wikipedia.",
+            "You are a helpful assistant that can answer questions, execute Python code, query PostgreSQL databases, and look up information on Wikipedia.",
             "When the user asks for data, graphs or analysis, you should use the Python tool.",
             "When the user asks for database queries or SQL operations, you should use the PSQL tool.",
-            "When the user asks for current information, news, facts, or anything that requires up-to-date knowledge, you should use DuckDuckGo search.",
             "When the user asks for general knowledge, definitions, historical facts, or encyclopedic information, you should use Wikipedia.",
-            "IMPORTANT: After using DuckDuckGo or Wikipedia, go directly to final_answer. DO NOT use Python tool to format search results.",
+            "IMPORTANT: After using Wikipedia, go directly to final_answer. DO NOT use Python tool to format search results.",
             "ALWAYS execute the necessary code/queries/searches before giving a final answer.",
             "Python code must be written in English. No special characters. No accents.",
             "SQL queries must be written in standard PostgreSQL syntax.",
@@ -231,20 +224,15 @@ async def example_agent(
             "DO NOT say: 'Aquí está tu gráfico: http://localhost:8080/files/plot.png' (WRONG!)",
             "DO NOT say: 'Ver gráfico' or 'Click here' (WRONG!)"
         ],
-        tools=[ThinkTool(), search_tool, wikipedia_tool, python_tool, psql_tool],
+        tools=[ThinkTool(), wikipedia_tool, python_tool, psql_tool],
         requirements=[
             ConditionalRequirement(
                 ThinkTool, 
                 force_at_step=1,
-                force_after=[search_tool, wikipedia_tool, python_tool, psql_tool],
+                force_after=[wikipedia_tool, python_tool, psql_tool],
                 consecutive_allowed=False
             ),
             # Limitar búsquedas para evitar loops
-            ConditionalRequirement(
-                DuckDuckGoSearchTool,
-                max_invocations=3,
-                consecutive_allowed=False
-            ),
             ConditionalRequirement(
                 WikipediaTool,
                 max_invocations=2,
@@ -522,50 +510,6 @@ async def example_agent(
                             yield trajectory.trajectory_metadata(
                                 title="PSQLTool Output",
                                 content=f"```\n{output_text}\n```"
-                            )
-                
-                elif tool_name == "DuckDuckGo":
-                    # Extraer la query de búsqueda
-                    query = step.input.get('query', '')
-                    max_results = step.input.get('max_results', 5)
-                    
-                    if query:
-                        content = f"Buscando en DuckDuckGo: **{query}**\n\nMáximo de resultados: {max_results}"
-                    else:
-                        content = "Realizando búsqueda web..."
-                    
-                    yield trajectory.trajectory_metadata(
-                        title="DuckDuckGo Search",
-                        content=content
-                    )
-                    
-                    # Verificar si hubo error
-                    if step.error:
-                        error_msg = str(step.error)
-                        yield trajectory.trajectory_metadata(
-                            title="DuckDuckGo Error",
-                            content=f"**Error:** {error_msg}"
-                        )
-                    # Mostrar output si está disponible
-                    elif step.output:
-                        # DuckDuckGoSearchTool devuelve un objeto con una lista de resultados
-                        # Convertir el output a string para mostrar el contenido
-                        output_text = str(step.output.result) if hasattr(step.output, 'result') else str(step.output)
-                        
-                        if output_text and len(output_text) > 50:
-                            # Mostrar un preview del contenido (primeros 500 caracteres)
-                            content_preview = output_text[:500]
-                            if len(output_text) > 500:
-                                content_preview += "..."
-                            
-                            yield trajectory.trajectory_metadata(
-                                title="DuckDuckGo Results",
-                                content=f"Encontrados resultados:\n\n{content_preview}"
-                            )
-                        else:
-                            yield trajectory.trajectory_metadata(
-                                title="DuckDuckGo Results",
-                                content="Búsqueda completada."
                             )
                 
                 elif tool_name == "Wikipedia":
