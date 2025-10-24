@@ -165,3 +165,7 @@ cython_debug/
 
 # tmp
 tmp/
+
+# Kubernetes secrets (no subir credenciales reales)
+infra/*-secret.yaml
+!infra/*-secret.yaml.example
