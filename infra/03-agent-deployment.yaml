@@ -34,9 +34,13 @@ spec:
             - name: CODE_INTERPRETER_URL
               value: "http://code-interpreter-service:50081"
             
-            # URL de la plataforma BeeAI
+            # URL de la plataforma BeeAI (interna, para registro del agente)
             - name: PLATFORM_URL
               value: "http://beeai-platform-svc:8333"
+            
+            # URL pública de la plataforma (para URLs que ve el usuario)
+            - name: PUBLIC_PLATFORM_URL
+              value: "https://beeai.hebusch.com"
             
             # Modelo LLM a usar
             - name: LLM_CHAT_MODEL_NAME

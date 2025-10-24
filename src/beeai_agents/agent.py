@@ -494,8 +494,8 @@ async def example_agent(
                         urn_pattern = r'urn:bee:file:([a-f0-9]+)'
                         urns_in_text = re.findall(urn_pattern, final_answer_text)
                         
-                        # Base URL de la plataforma
-                        platform_url = os.getenv("PLATFORM_URL", "http://127.0.0.1:8334")
+                        # Base URL de la plataforma (usar PUBLIC_PLATFORM_URL para las URLs que ve el usuario)
+                        platform_url = os.getenv("PUBLIC_PLATFORM_URL", os.getenv("PLATFORM_URL", "http://127.0.0.1:8334"))
                         
                         # Mapeo de URN a URL
                         urn_to_url = {}
