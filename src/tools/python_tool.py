@@ -147,7 +147,14 @@ The code will be executed in a sandboxed environment."""
                         # Formato: ![filename](urn:bee:file:hash)
                         file_lines.append(f"![{base_filename}](urn:bee:file:{file_hash})")
                     
-                    files_output = "The code executed successfully. The following files were created or modified. The user does not see them yet. To present a file to the user, send them the link below, verbatim: " + " ".join(file_lines)
+                    files_output = (
+                        "SUCCESS: Files were created. "
+                        "IMPORTANT: To show these files to the user, you MUST copy the EXACT markdown below into your final answer. "
+                        "DO NOT modify it, DO NOT create your own URLs, DO NOT add extra text. "
+                        "Just copy this EXACTLY as-is:\n\n" + 
+                        "\n".join(file_lines) +
+                        "\n\nRemember: Use the markdown EXACTLY as shown above. The system will convert it to the correct URL automatically."
+                    )
                     output_parts.append(files_output)
                 
                 # Si no hay output en absoluto, indicarlo

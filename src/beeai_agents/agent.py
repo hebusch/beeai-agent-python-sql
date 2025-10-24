@@ -196,8 +196,22 @@ async def example_agent(
             "Python code must be written in English. No special characters. No accents.",
             "SQL queries must be written in standard PostgreSQL syntax.",
             "ALWAYS USE THE TOOLS IN ENGLISH.",
-            "IMPORTANT: ALWAYS ANSWER THE USER IN SPANISH."
-            "If the user asks for a graph, you should use the Python tool to generate the graph. AND ALWAYS GIVE THE USER THE LINK TO THE GRAPH."
+            "IMPORTANT: ALWAYS ANSWER THE USER IN SPANISH.",
+            "",
+            "=== CRITICAL: HOW TO HANDLE GENERATED FILES (IMAGES, PLOTS, CSVs, etc.) ===",
+            "When the Python tool generates files, it will give you markdown in this format: ![filename](urn:bee:file:HASH)",
+            "YOU MUST:",
+            "1. Copy that EXACT markdown into your final answer - DO NOT modify it, DO NOT change it",
+            "2. DO NOT create your own URLs - DO NOT use http://localhost, DO NOT use googleapis.com, DO NOT invent URLs",
+            "3. DO NOT add 'View graph', 'Click here', or any other link text - just use the markdown as-is",
+            "4. The system will automatically convert the urn:bee:file to the correct public URL",
+            "5. ALWAYS include the image markdown so the user sees it directly in the chat",
+            "",
+            "EXAMPLE:",
+            "If Python tool says: ![plot.png](urn:bee:file:abc123)",
+            "Your answer should be: 'Aquí está tu gráfico: ![plot.png](urn:bee:file:abc123)'",
+            "DO NOT say: 'Aquí está tu gráfico: http://localhost:8080/files/plot.png' (WRONG!)",
+            "DO NOT say: 'Ver gráfico' or 'Click here' (WRONG!)"
         ],
         tools=[ThinkTool(), python_tool, psql_tool],
         requirements=[
