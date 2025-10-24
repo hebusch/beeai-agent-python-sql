@@ -6,10 +6,9 @@ metadata:
   name: code-interpreter-storage
 spec:
   accessModes:
-    - ReadWriteMany  # Permite que múltiples pods lean/escriban
+    - ReadWriteOnce  # RWO funciona si ambos pods están en el mismo nodo
   resources:
     requests:
       storage: 10Gi  # Ajusta según tus necesidades
-  # Si tu cluster usa storage classes específicos, descomenta y ajusta:
-  # storageClassName: local-path  # Para k3s por defecto es local-path
+  storageClassName: local-path  # Storage class de k3s
 
