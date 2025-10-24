@@ -120,7 +120,7 @@ async def example_agent(
         model_name,
         ChatModelParameters(
             temperature=0.0,
-            max_tokens=2048  # Máximo tokens para respuestas complejas y detalladas
+            max_tokens=1024,
         )
     )
 
@@ -201,7 +201,7 @@ async def example_agent(
             "You are a helpful assistant that can answer questions, execute Python code, query PostgreSQL databases, and look up information on Wikipedia.",
             "When the user asks for data, graphs or analysis, you should use the Python tool.",
             "When the user asks for database queries or SQL operations, you should use the PSQL tool.",
-            "When the user asks for general knowledge, definitions, historical facts, or encyclopedic information, you should use Wikipedia.",
+            "When the user asks for historical information, or encyclopedic information, you should use Wikipedia.",
             "IMPORTANT: After using Wikipedia, go directly to final_answer. DO NOT use Python tool to format search results.",
             "ALWAYS execute the necessary code/queries/searches before giving a final answer.",
             "Python code must be written in English. No special characters. No accents.",
@@ -235,7 +235,7 @@ async def example_agent(
             # Limitar búsquedas para evitar loops
             ConditionalRequirement(
                 WikipediaTool,
-                max_invocations=2,
+                max_invocations=1,
                 consecutive_allowed=False
             )
         ],
