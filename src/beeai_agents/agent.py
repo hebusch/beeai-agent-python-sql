@@ -11,6 +11,8 @@ from beeai_framework.backend import AssistantMessage, UserMessage, ChatModel
 from beeai_framework.backend.types import ChatModelParameters
 from beeai_framework.tools.think import ThinkTool
 from beeai_framework.tools.code import LocalPythonStorage, PythonTool
+from beeai_framework.tools.search.duckduckgo import DuckDuckGoSearchTool
+from beeai_framework.tools.search.wikipedia import WikipediaTool
 from beeai_framework.tools import Tool
 from beeai_framework.memory import UnconstrainedMemory, TokenMemory
 
@@ -55,24 +57,32 @@ def to_framework_message(message: Message) -> FrameworkMessage:
         raise ValueError(f"Invalid message role: {message.role}")
 
 @server.agent(
-    name="Asistente IA con Python y PostgreSQL",
+    name="Asistente IA con Python, PostgreSQL y Búsqueda Web",
     default_input_modes=["text", "text/plain", "application/pdf", "text/csv", "application/json"],
     default_output_modes=["text", "text/plain", "image/png", "image/jpeg", "text/csv", "application/json"],
     detail=AgentDetail(
         ui_type="chat",
-        user_greeting="Hola! Chat con Python y PostgreSQL",
-        input_placeholder="Ask anything...",
+        user_greeting="Hola! Puedo ayudarte con Python, PostgreSQL, búsquedas web y Wikipedia. ¿En qué puedo ayudarte?",
+        input_placeholder="Pregúntame cualquier cosa...",
         license="Apache 2.0",
         programming_language="python",
         framework="BeeAI",
         tools=[
             AgentDetailTool(
-                name="Python Tool",
-                description="Ejecuta código Python",
+                name="DuckDuckGo Search",
+                description="Busca información actualizada en la web sobre cualquier tema, noticias y datos en tiempo real.",
             ),
             AgentDetailTool(
-                name="PSQL Tool",
-                description="Ejecuta queries SQL en PostgreSQL",
+                name="Wikipedia",
+                description="Consulta conocimiento enciclopédico, definiciones, datos históricos y hechos generales.",
+            ),
+            AgentDetailTool(
+                name="Python",
+                description="Ejecuta código Python para análisis de datos, generación de gráficos y cálculos complejos.",
+            ),
+            AgentDetailTool(
+                name="PostgreSQL",
+                description="Ejecuta queries SQL para consultar y analizar datos en bases de datos PostgreSQL.",
             ),
         ],
     )
@@ -182,6 +192,11 @@ async def example_agent(
     # Agent Logic Here
     #########################################################
 
+    # Inicializar herramientas de búsqueda
+    print(f"Inicializando herramientas de búsqueda")
+    search_tool = DuckDuckGoSearchTool()
+    wikipedia_tool = WikipediaTool()
+    
     print(f"Inicializando agente")
 
     # Create a RequirementAgent with conversation memory
@@ -189,10 +204,12 @@ async def example_agent(
         llm=llm,
         role="AI Assistant",
         instructions=[
-            "You are a helpful assistant that can answer questions, execute Python code, and query PostgreSQL databases.",
+            "You are a helpful assistant that can answer questions, execute Python code, query PostgreSQL databases, search the web, and look up information on Wikipedia.",
             "When the user asks for data, graphs or analysis, you should use the Python tool.",
             "When the user asks for database queries or SQL operations, you should use the PSQL tool.",
-            "ALWAYS execute the necessary code/queries before giving a final answer.",
+            "When the user asks for current information, news, facts, or anything that requires up-to-date knowledge, you should use DuckDuckGo search.",
+            "When the user asks for general knowledge, definitions, historical facts, or encyclopedic information, you should use Wikipedia.",
+            "ALWAYS execute the necessary code/queries/searches before giving a final answer.",
             "Python code must be written in English. No special characters. No accents.",
             "SQL queries must be written in standard PostgreSQL syntax.",
             "ALWAYS USE THE TOOLS IN ENGLISH.",
@@ -213,12 +230,23 @@ async def example_agent(
             "DO NOT say: 'Aquí está tu gráfico: http://localhost:8080/files/plot.png' (WRONG!)",
             "DO NOT say: 'Ver gráfico' or 'Click here' (WRONG!)"
         ],
-        tools=[ThinkTool(), python_tool, psql_tool],
+        tools=[ThinkTool(), search_tool, wikipedia_tool, python_tool, psql_tool],
         requirements=[
             ConditionalRequirement(
                 ThinkTool, 
                 force_at_step=1,
-                force_after=[python_tool, psql_tool],
+                force_after=[search_tool, wikipedia_tool, python_tool, psql_tool],
+                consecutive_allowed=False
+            ),
+            # Limitar búsquedas para evitar loops
+            ConditionalRequirement(
+                DuckDuckGoSearchTool,
+                max_invocations=3,
+                consecutive_allowed=False
+            ),
+            ConditionalRequirement(
+                WikipediaTool,
+                max_invocations=2,
                 consecutive_allowed=False
             )
         ],
