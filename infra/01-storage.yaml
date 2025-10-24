@@ -1,0 +1,15 @@
+---
+# PersistentVolumeClaim para storage compartido entre code-interpreter y agente
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-interpreter-storage
+spec:
+  accessModes:
+    - ReadWriteMany  # Permite que múltiples pods lean/escriban
+  resources:
+    requests:
+      storage: 10Gi  # Ajusta según tus necesidades
+  # Si tu cluster usa storage classes específicos, descomenta y ajusta:
+  # storageClassName: local-path  # Para k3s por defecto es local-path
+
