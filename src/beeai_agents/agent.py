@@ -209,6 +209,7 @@ async def example_agent(
             "When the user asks for database queries or SQL operations, you should use the PSQL tool.",
             "When the user asks for current information, news, facts, or anything that requires up-to-date knowledge, you should use DuckDuckGo search.",
             "When the user asks for general knowledge, definitions, historical facts, or encyclopedic information, you should use Wikipedia.",
+            "IMPORTANT: After using DuckDuckGo or Wikipedia, go directly to final_answer. DO NOT use Python tool to format search results.",
             "ALWAYS execute the necessary code/queries/searches before giving a final answer.",
             "Python code must be written in English. No special characters. No accents.",
             "SQL queries must be written in standard PostgreSQL syntax.",
