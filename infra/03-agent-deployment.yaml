@@ -71,20 +71,20 @@ spec:
               memory: "2Gi"
               cpu: "1000m"
           
-          # Health checks
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 5
+          # Health checks deshabilitados - el servidor no expone /health
+          # livenessProbe:
+          #   httpGet:
+          #     path: /health
+          #     port: 8000
+          #   initialDelaySeconds: 30
+          #   periodSeconds: 10
+          # 
+          # readinessProbe:
+          #   httpGet:
+          #     path: /health
+          #     port: 8000
+          #   initialDelaySeconds: 10
+          #   periodSeconds: 5
       
       volumes:
         - name: storage-volume
