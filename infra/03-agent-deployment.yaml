@@ -42,6 +42,14 @@ spec:
             - name: LLM_CHAT_MODEL_NAME
               value: "watsonx:ibm/granite-4-h-small"
             
+            # Modo de ejecución (false para auto-registro con BeeAI Platform)
+            - name: PRODUCTION_MODE
+              value: "false"
+            
+            # Credenciales de BeeAI Platform (para registro)
+            - name: BEEAI__ADMIN_PASSWORD
+              value: "Admin123"
+            
             # Credenciales de WatsonX (desde Secret)
             - name: WATSONX_PROJECT_ID
               valueFrom:
