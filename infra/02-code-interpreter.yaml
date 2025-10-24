@@ -50,8 +50,9 @@ spec:
           mountPath: /storage
   volumes:
     - name: storage-volume
-      persistentVolumeClaim:
-        claimName: code-interpreter-storage
+      hostPath:
+        path: /var/lib/beeai/storage
+        type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

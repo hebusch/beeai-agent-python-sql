@@ -1,0 +1,57 @@
+# Configuración de BeeAI Platform para incluir el agente custom
+#
+# Este archivo debe usarse al hacer upgrade del Helm chart de BeeAI Platform:
+# helm upgrade beeai -f infra/06-beeai-platform-config.yaml \
+#   oci://ghcr.io/i-am-bee/beeai-platform/beeai-platform-chart/beeai-platform:0.3.7
+
+# Configuración de autenticación (mantener la actual)
+auth:
+  basic:
+    adminPassword: Admin123
+    enabled: true
+  enabled: true
+  jwtSecretKey: mi-secreto-jwt-super-seguro-2024
+
+# Llave de encriptación (mantener la actual)
+encryptionKey: 26gkk-oGBVfg_VjuHPwWtC_opRBqU7f5T0cHH-21FXY=
+
+# Agentes del catálogo público
+externalRegistries:
+  public_github: https://github.com/i-am-bee/beeai-platform@v0.3.7#path=agent-registry.yaml
+
+# Agentes custom (providers)
+providers:
+  - location: docker.io/library/beeai-agent:latest
+    imagePullPolicy: IfNotPresent
+    # Volúmenes para compartir con code-interpreter
+    volumes:
+      - name: storage-volume
+        hostPath:
+          path: /var/lib/beeai/storage
+          type: Directory
+    volumeMounts:
+      - name: storage-volume
+        mountPath: /app/tmp
+    # Variables de entorno necesarias
+    env:
+      - name: HOST
+        value: "0.0.0.0"
+      - name: PORT
+        value: "8000"
+      - name: CODE_INTERPRETER_URL
+        value: "http://code-interpreter-service:50081"
+      - name: PLATFORM_URL
+        value: "http://beeai-platform-svc:8333"
+      - name: LLM_CHAT_MODEL_NAME
+        value: "watsonx:ibm/granite-4-h-small"
+      - name: WATSONX_PROJECT_ID
+        valueFrom:
+          secretKeyRef:
+            name: watsonx-credentials
+            key: project-id
+      - name: WATSONX_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: watsonx-credentials
+            key: api-key
+
