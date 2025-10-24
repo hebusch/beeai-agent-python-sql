@@ -42,7 +42,7 @@ spec:
         - name: APP_EXECUTOR_IMAGE
           value: icr.io/i-am-bee/bee-code-executor:0.0.29
         - name: APP_FILE_STORAGE_PATH
-          value: /storage
+          value: /storage/code_interpreter
         - name: APP_EXECUTOR_POD_QUEUE_TARGET_LENGTH
           value: "1"
       volumeMounts:
