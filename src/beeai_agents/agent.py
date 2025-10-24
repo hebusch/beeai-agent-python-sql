@@ -57,7 +57,7 @@ def to_framework_message(message: Message) -> FrameworkMessage:
         raise ValueError(f"Invalid message role: {message.role}")
 
 @server.agent(
-    name="Asistente IA con Python, PostgreSQL y Búsqueda Web",
+    name="",
     default_input_modes=["text", "text/plain", "application/pdf", "text/csv", "application/json"],
     default_output_modes=["text", "text/plain", "image/png", "image/jpeg", "text/csv", "application/json"],
     detail=AgentDetail(
@@ -521,6 +521,100 @@ async def example_agent(
                             yield trajectory.trajectory_metadata(
                                 title="PSQLTool Output",
                                 content=f"```\n{output_text}\n```"
+                            )
+                
+                elif tool_name == "DuckDuckGo":
+                    # Extraer la query de búsqueda
+                    query = step.input.get('query', '')
+                    max_results = step.input.get('max_results', 5)
+                    
+                    if query:
+                        content = f"Buscando en DuckDuckGo: **{query}**\n\nMáximo de resultados: {max_results}"
+                    else:
+                        content = "Realizando búsqueda web..."
+                    
+                    yield trajectory.trajectory_metadata(
+                        title="DuckDuckGo Search",
+                        content=content
+                    )
+                    
+                    # Verificar si hubo error
+                    if step.error:
+                        error_msg = str(step.error)
+                        yield trajectory.trajectory_metadata(
+                            title="DuckDuckGo Error",
+                            content=f"**Error:** {error_msg}"
+                        )
+                    # Mostrar output si está disponible
+                    elif step.output:
+                        # DuckDuckGoSearchTool devuelve una lista de resultados
+                        if hasattr(step.output, 'results') and step.output.results:
+                            results_count = len(step.output.results)
+                            results_summary = f"Encontrados **{results_count}** resultados:\n\n"
+                            
+                            for i, result in enumerate(step.output.results[:3], 1):  # Mostrar solo top 3
+                                title = result.get('title', 'Sin título')
+                                url = result.get('url', '')
+                                results_summary += f"{i}. [{title}]({url})\n"
+                            
+                            if results_count > 3:
+                                results_summary += f"\n_... y {results_count - 3} resultados más_"
+                            
+                            yield trajectory.trajectory_metadata(
+                                title="DuckDuckGo Results",
+                                content=results_summary
+                            )
+                        else:
+                            yield trajectory.trajectory_metadata(
+                                title="DuckDuckGo Results",
+                                content="No se encontraron resultados."
+                            )
+                
+                elif tool_name == "Wikipedia":
+                    # Extraer la query de búsqueda
+                    query = step.input.get('query', '')
+                    full_text = step.input.get('full_text', False)
+                    
+                    if query:
+                        content = f"Consultando Wikipedia: **{query}**"
+                        if full_text:
+                            content += "\n\n_(Solicitando texto completo)_"
+                    else:
+                        content = "Consultando Wikipedia..."
+                    
+                    yield trajectory.trajectory_metadata(
+                        title="Wikipedia",
+                        content=content
+                    )
+                    
+                    # Verificar si hubo error
+                    if step.error:
+                        error_msg = str(step.error)
+                        yield trajectory.trajectory_metadata(
+                            title="Wikipedia Error",
+                            content=f"**Error:** {error_msg}"
+                        )
+                    # Mostrar output si está disponible
+                    elif step.output:
+                        # WikipediaTool devuelve un objeto con title, summary, url
+                        if hasattr(step.output, 'title') and step.output.title:
+                            output_summary = f"**Artículo encontrado:** [{step.output.title}]({step.output.url})\n\n"
+                            
+                            # Mostrar un preview del summary (primeros 300 caracteres)
+                            if hasattr(step.output, 'summary') and step.output.summary:
+                                summary_preview = step.output.summary[:300]
+                                if len(step.output.summary) > 300:
+                                    summary_preview += "..."
+                                output_summary += f"{summary_preview}"
+                            
+                            yield trajectory.trajectory_metadata(
+                                title="Wikipedia Result",
+                                content=output_summary
+                            )
+                        else:
+                            yield trajectory.trajectory_metadata(
+                                title="Wikipedia Result",
+                                content="No se encontró información en Wikipedia."
                             )
                 
                 elif tool_name == "final_answer":
