@@ -547,27 +547,24 @@ async def example_agent(
                         )
                     # Mostrar output si está disponible
                     elif step.output:
-                        # DuckDuckGoSearchTool devuelve una lista de resultados
-                        if hasattr(step.output, 'results') and step.output.results:
-                            results_count = len(step.output.results)
-                            results_summary = f"Encontrados **{results_count}** resultados:\n\n"
-                            
-                            for i, result in enumerate(step.output.results[:3], 1):  # Mostrar solo top 3
-                                title = result.get('title', 'Sin título')
-                                url = result.get('url', '')
-                                results_summary += f"{i}. [{title}]({url})\n"
-                            
-                            if results_count > 3:
-                                results_summary += f"\n_... y {results_count - 3} resultados más_"
+                        # DuckDuckGoSearchTool devuelve un objeto con una lista de resultados
+                        # Convertir el output a string para mostrar el contenido
+                        output_text = str(step.output.result) if hasattr(step.output, 'result') else str(step.output)
+                        
+                        if output_text and len(output_text) > 50:
+                            # Mostrar un preview del contenido (primeros 500 caracteres)
+                            content_preview = output_text[:500]
+                            if len(output_text) > 500:
+                                content_preview += "..."
                             
                             yield trajectory.trajectory_metadata(
                                 title="DuckDuckGo Results",
-                                content=results_summary
+                                content=f"Encontrados resultados:\n\n{content_preview}"
                             )
                         else:
                             yield trajectory.trajectory_metadata(
                                 title="DuckDuckGo Results",
-                                content="No se encontraron resultados."
+                                content="Búsqueda completada."
                             )
                 
                 elif tool_name == "Wikipedia":
