@@ -7,7 +7,7 @@ ENV UV_LINK_MODE=copy \
 WORKDIR /app
 
 # Copiar solo archivos de dependencias primero (para cachear la instalación)
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 
 # Instalar dependencias (esta capa se cachea si no cambian pyproject.toml o uv.lock)
 RUN uv sync --no-cache --locked --link-mode copy
