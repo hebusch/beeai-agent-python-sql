@@ -201,6 +201,8 @@ async def example_agent(
             "When the user asks for data, graphs or analysis, you should use the Python tool.",
             "When the user asks for database queries or SQL operations, you should use the PSQL tool.",
             "When the user asks for historical information, or encyclopedic information, you should use Wikipedia.",
+            "IMPORTANT: For Wikipedia searches, use SHORT, SIMPLE queries (max 5-10 words). Examples: 'Sebastian Pinera', 'Chile president', 'Python programming'.",
+            "DO NOT use long, complex queries with many keywords - this will fail.",
             "IMPORTANT: After using Wikipedia, go directly to final_answer. DO NOT use Python tool to format search results.",
             "ALWAYS execute the necessary code/queries/searches before giving a final answer.",
             "Python code must be written in English. No special characters. No accents.",
