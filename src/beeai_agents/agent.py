@@ -4,7 +4,6 @@ from typing import Annotated
 
 from a2a.types import Message, Role, TextPart, Part
 from a2a.utils.message import get_message_text
-from beeai_framework.agents.react import ReActAgent
 from beeai_framework.agents.experimental import RequirementAgent
 from beeai_framework.agents.experimental.requirements.conditional import ConditionalRequirement
 from beeai_framework.backend import AssistantMessage, UserMessage, ChatModel
@@ -13,7 +12,7 @@ from beeai_framework.tools.think import ThinkTool
 from beeai_framework.tools.code import LocalPythonStorage, PythonTool
 from beeai_framework.tools.search.wikipedia import WikipediaTool
 from beeai_framework.tools import Tool
-from beeai_framework.memory import UnconstrainedMemory, TokenMemory
+from beeai_framework.memory import UnconstrainedMemory
 
 from tools.python_tool import FixedPythonTool
 from tools.psql_tool import PSQLTool
