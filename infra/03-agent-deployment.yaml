@@ -66,21 +66,34 @@ spec:
                   name: watsonx-credentials
                   key: api-key
             
-            # Credenciales de PostgreSQL (OPCIONAL - descomenta si necesitas)
-            # - name: PSQL_HOST
-            #   value: "postgresql.default.svc.cluster.local"
-            # - name: PSQL_PORT
-            #   value: "5432"
-            # - name: PSQL_USERNAME
-            #   valueFrom:
-            #     secretKeyRef:
-            #       name: postgres-credentials
-            #       key: username
-            # - name: PSQL_PASSWORD
-            #   valueFrom:
-            #     secretKeyRef:
-            #       name: postgres-credentials
-            #       key: password
+            # Credenciales de DB2 AIOps (desde Secret de Kubernetes)
+            # Estos valores también pueden ser provisionados por el usuario vía Secrets Extension
+            # Si no están aquí, el agente pedirá al usuario que los provea
+            - name: DB2_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db2-credentials
+                  key: host
+            - name: DB2_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: db2-credentials
+                  key: port
+            - name: DB2_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: db2-credentials
+                  key: database
+            - name: DB2_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db2-credentials
+                  key: username
+            - name: DB2_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db2-credentials
+                  key: password
           
           volumeMounts:
             # Montar el storage compartido en /app/tmp

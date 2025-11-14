@@ -2,7 +2,7 @@ import os
 import re
 from typing import Annotated
 
-from a2a.types import Message, Role, TextPart, Part
+from a2a.types import Message, Role, TextPart, Part, AgentSkill
 from a2a.utils.message import get_message_text
 from beeai_framework.agents.experimental import RequirementAgent
 from beeai_framework.agents.experimental.requirements.conditional import ConditionalRequirement
@@ -10,14 +10,20 @@ from beeai_framework.backend import AssistantMessage, UserMessage, ChatModel
 from beeai_framework.backend.types import ChatModelParameters
 from beeai_framework.tools.think import ThinkTool
 from beeai_framework.tools.code import LocalPythonStorage, PythonTool
-from beeai_framework.tools.search.wikipedia import WikipediaTool
 from beeai_framework.tools import Tool
 from beeai_framework.memory import UnconstrainedMemory
 
 from tools.python_tool import FixedPythonTool
-from tools.psql_tool import PSQLTool
+from tools.db2_tool import DB2Tool
 
-from beeai_sdk.a2a.extensions import (
+from .prompts import (
+    AGENT_INSTRUCTIONS,
+    AGENT_ROLE,
+    USER_GREETING,
+    INPUT_PLACEHOLDER,
+)
+
+from agentstack_sdk.a2a.extensions import (
     AgentDetail,
     AgentDetailTool,
     LLMServiceExtensionServer,
@@ -25,15 +31,21 @@ from beeai_sdk.a2a.extensions import (
     TrajectoryExtensionServer,
     TrajectoryExtensionSpec,
 )
-from beeai_sdk.a2a.extensions.services.platform import (
+from agentstack_sdk.a2a.extensions.auth.secrets import (
+    SecretDemand,
+    SecretsExtensionServer,
+    SecretsExtensionSpec,
+    SecretsServiceExtensionParams,
+)
+from agentstack_sdk.a2a.extensions.services.platform import (
     PlatformApiExtensionServer,
     PlatformApiExtensionSpec,
 )
-from beeai_sdk.a2a.types import AgentMessage
-from beeai_sdk.platform import File
-from beeai_sdk.server import Server
-from beeai_sdk.server.context import RunContext
-from beeai_sdk.server.store.platform_context_store import PlatformContextStore
+from agentstack_sdk.a2a.types import AgentMessage
+from agentstack_sdk.platform import File
+from agentstack_sdk.server import Server
+from agentstack_sdk.server.context import RunContext
+from agentstack_sdk.server.store.platform_context_store import PlatformContextStore
 
 
 from dotenv import load_dotenv
@@ -44,7 +56,7 @@ server = Server()
 FrameworkMessage = UserMessage | AssistantMessage
 
 def to_framework_message(message: Message) -> FrameworkMessage:
-    """Convert A2A Message to BeeAI Framework Message format"""
+    """Convert A2A Message to Agent Stack Framework Message format"""
     message_text = "".join(part.root.text for part in message.parts if part.root.kind == "text")
 
     if message.role == Role.agent:
@@ -55,31 +67,37 @@ def to_framework_message(message: Message) -> FrameworkMessage:
         raise ValueError(f"Invalid message role: {message.role}")
 
 @server.agent(
-    name="AI Chat",
-    default_input_modes=["text", "text/plain", "application/pdf", "text/csv", "application/json"],
+    name="BECH AIOPS Analytics Agent",
     default_output_modes=["text", "text/plain", "image/png", "image/jpeg", "text/csv", "application/json"],
     detail=AgentDetail(
         ui_type="chat",
-        user_greeting="Hola! Puedo ayudarte con Python, PostgreSQL y Wikipedia. ¿En qué puedo ayudarte?",
-        input_placeholder="Pregúntame cualquier cosa...",
+        user_greeting=USER_GREETING,
+        input_placeholder=INPUT_PLACEHOLDER,
         license="Apache 2.0",
         programming_language="python",
-        framework="BeeAI",
+        framework="Agent Stack",
         tools=[
             AgentDetailTool(
-                name="Wikipedia",
-                description="Consulta conocimiento enciclopédico, definiciones, datos históricos y hechos generales.",
+                name="DB2",
+                description="Consulta la base de datos DB2 (REPORTER) de Cloud Pak for AIOps. Accede a tablas de alertas (ALERTS_REPORTER_STATUS), incidentes (INCIDENTS_REPORTER_STATUS), auditoría de severidad y tipos de severidad.",
             ),
             AgentDetailTool(
                 name="Python",
-                description="Ejecuta código Python para análisis de datos, generación de gráficos y cálculos complejos.",
-            ),
-            AgentDetailTool(
-                name="PostgreSQL",
-                description="Ejecuta queries SQL para consultar y analizar datos en bases de datos PostgreSQL.",
+                description="Analiza resultados de queries DB2 y genera gráficos (distribución de severidad, tendencias temporales, top equipos, etc.), tablas y visualizaciones para insights de AIOps.",
             ),
         ],
-    )
+    ),
+    skills=[
+            AgentSkill(
+                id="aiops-analytics",
+                name="AIOps Analytics",
+                description="Analiza datos de AIOps y genera insights y visualizaciones.",
+                tags=["aiops", "analytics", "visualizations"],
+                examples=[
+                    "Analiza los incidentes sin resolver.",
+                ],
+            ),
+        ],
 )
 async def example_agent(
     input: Message,
@@ -88,7 +106,7 @@ async def example_agent(
     trajectory: Annotated[TrajectoryExtensionServer, TrajectoryExtensionSpec()],
     platform_api: Annotated[PlatformApiExtensionServer, PlatformApiExtensionSpec()],
 ):
-    """Example agent with Python code execution and PostgreSQL capabilities"""
+    """AIOps Analytics Agent - Consultas DB2 y análisis de datos con Python"""
 
     #########################################################
     # Chat and messages context capabilities
@@ -134,9 +152,11 @@ async def example_agent(
     # - local_working_dir: donde este agente guarda archivos antes de subirlos
     # - interpreter_working_dir: donde el code interpreter espera encontrar archivos
     #   (en docker-compose.yml: ./tmp/code_interpreter se monta a /storage en k8s)
+    # - db2_output_dir: donde DB2Tool guarda los CSVs (./tmp/db2/)
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
     local_working_dir = os.path.join(project_root, "tmp", "code_interpreter_source")
     interpreter_working_dir = os.path.join(project_root, "tmp", "code_interpreter")
+    db2_output_dir = os.path.join(project_root, "tmp")  # DB2 creará ./tmp/db2/ subdirectory
     
     os.makedirs(local_working_dir, exist_ok=True)
     os.makedirs(interpreter_working_dir, exist_ok=True)
@@ -152,93 +172,70 @@ async def example_agent(
 
     # Usar FixedPythonTool que hace requests HTTP directas al code interpreter
     # Esto evita la validación estricta del PythonTool del framework
-    python_tool = FixedPythonTool(code_interpreter_url=code_interpreter_url, storage=storage)
+    # Python se usa para análisis y visualización de datos (NO para queries DB2 directas)
+    python_tool = FixedPythonTool(
+        code_interpreter_url=code_interpreter_url, 
+        storage=storage
+    )
 
     #########################################################
-    # PostgreSQL Tools Configuration
+    # DB2 Tools Configuration con Secrets
     #########################################################
 
-    # Obtener credenciales de PostgreSQL desde variables de entorno
-    # Esto permite usar el PSQLTool sin necesitar la extensión de Secrets
-    psql_host = os.getenv("PSQL_HOST")
-    psql_port = int(os.getenv("PSQL_PORT", "5432"))
-    psql_username = os.getenv("PSQL_USERNAME")
-    psql_password = os.getenv("PSQL_PASSWORD")
+    # Obtener credenciales de DB2 desde variables de entorno (Kubernetes Secrets)
+    # Las credenciales se inyectan como env vars desde el Secret de Kubernetes
+    db2_host = os.getenv("DB2_HOST")
+    db2_port = int(os.getenv("DB2_PORT", "50000"))
+    db2_database = os.getenv("DB2_DATABASE")
+    db2_username = os.getenv("DB2_USERNAME")
+    db2_password = os.getenv("DB2_PASSWORD")
     
-    if psql_host and psql_username and psql_password:
-        print(f"Inicializando PSQL Tool:")
-        print(f"  - Host: {psql_host}")
-        print(f"  - Port: {psql_port}")
-        print(f"  - Username: {psql_username}")
+    if db2_host and db2_database and db2_username and db2_password:
+        print(f"Inicializando DB2 Tool:")
+        print(f"  - Host: {db2_host}")
+        print(f"  - Port: {db2_port}")
+        print(f"  - Database: {db2_database}")
+        print(f"  - Username: {db2_username}")
     else:
-        print(f"⚠️ PostgreSQL credentials not configured (set PSQL_HOST, PSQL_USERNAME, PSQL_PASSWORD env vars)")
+        print(f"⚠️ DB2 credentials not configured (set DB2_HOST, DB2_DATABASE, DB2_USERNAME, DB2_PASSWORD env vars)")
+        print(f"   DB2 queries will fail until credentials are provided.")
     
-    # Crear PSQLTool con las credenciales (si están disponibles)
+    # Crear DB2Tool con las credenciales (si están disponibles)
     # Si no están configuradas, el tool mostrará un error cuando se intente usar
-    psql_tool = PSQLTool(
-        host=psql_host,
-        port=psql_port,
-        username=psql_username,
-        password=psql_password
+    # Pasar db2_output_dir para que DB2 guarde los CSV en ./tmp/db2/
+    db2_tool = DB2Tool(
+        host=db2_host,
+        port=db2_port,
+        database=db2_database,
+        username=db2_username,
+        password=db2_password,
+        output_dir=db2_output_dir
     )
 
     #########################################################
     # Agent Logic Here
     #########################################################
-
-    # Inicializar herramientas de búsqueda
-    print(f"Inicializando herramientas de búsqueda")
-    wikipedia_tool = WikipediaTool()
     
     print(f"Inicializando agente")
 
     # Create a RequirementAgent with conversation memory
     agent = RequirementAgent(
         llm=llm,
-        role="AI Assistant",
-        instructions=[
-            "You are a helpful assistant that can answer questions, execute Python code, query PostgreSQL databases, and look up information on Wikipedia.",
-            "When the user asks for data, graphs or analysis, you should use the Python tool.",
-            "When the user asks for database queries or SQL operations, you should use the PSQL tool.",
-            "When the user asks for historical information, or encyclopedic information, you should use Wikipedia.",
-            "IMPORTANT: For Wikipedia searches, use SHORT, SIMPLE queries (max 5-10 words). Examples: 'Sebastian Pinera', 'Chile president', 'Python programming'.",
-            "DO NOT use long, complex queries with many keywords - this will fail.",
-            "IMPORTANT: After using Wikipedia, go directly to final_answer. DO NOT use Python tool to format search results.",
-            "ALWAYS execute the necessary code/queries/searches before giving a final answer.",
-            "Python code must be written in English. No special characters. No accents.",
-            "SQL queries must be written in standard PostgreSQL syntax.",
-            "ALWAYS USE THE TOOLS IN ENGLISH.",
-            "IMPORTANT: ALWAYS ANSWER THE USER IN SPANISH.",
-            "",
-            "=== CRITICAL: HOW TO HANDLE GENERATED FILES (IMAGES, PLOTS, CSVs, etc.) ===",
-            "When the Python tool generates files, it will give you markdown in this format: ![filename](urn:bee:file:HASH)",
-            "YOU MUST:",
-            "1. Copy that EXACT markdown into your final answer - DO NOT modify it, DO NOT change it",
-            "2. DO NOT create your own URLs - DO NOT use http://localhost, DO NOT use googleapis.com, DO NOT invent URLs",
-            "3. DO NOT add 'View graph', 'Click here', or any other link text - just use the markdown as-is",
-            "4. The system will automatically convert the urn:bee:file to the correct public URL",
-            "5. ALWAYS include the image markdown so the user sees it directly in the chat",
-            "",
-            "EXAMPLE:",
-            "If Python tool says: ![plot.png](urn:bee:file:abc123)",
-            "Your answer should be: 'Aquí está tu gráfico: ![plot.png](urn:bee:file:abc123)'",
-            "DO NOT say: 'Aquí está tu gráfico: http://localhost:8080/files/plot.png' (WRONG!)",
-            "DO NOT say: 'Ver gráfico' or 'Click here' (WRONG!)"
-        ],
-        tools=[ThinkTool(), wikipedia_tool, python_tool, psql_tool],
+        role=AGENT_ROLE,
+        instructions=AGENT_INSTRUCTIONS,
+        tools=[ThinkTool(), python_tool, db2_tool],
         requirements=[
             ConditionalRequirement(
                 ThinkTool, 
                 force_at_step=1,
-                force_after=[wikipedia_tool, python_tool, psql_tool],
-                consecutive_allowed=False
-            ),
-            # Limitar búsquedas para evitar loops
-            ConditionalRequirement(
-                WikipediaTool,
-                max_invocations=1,
+                force_after=[python_tool, db2_tool],
                 consecutive_allowed=False
             )
+            # ConditionalRequirement(
+            #     db2_tool,
+            #     force_at_step=2,
+            #     consecutive_allowed=False
+            # ),
         ],
     )
 
@@ -258,7 +255,7 @@ async def example_agent(
 
     async for event, meta in agent.run(
         get_message_text(input),
-        max_iterations=8,
+        max_iterations=25,
         max_retries_per_step=3,
         total_max_retries=10
     ):
@@ -456,28 +453,28 @@ async def example_agent(
                     elif step.output:
                         # StringToolOutput tiene el texto en .result
                         output_text = str(step.output.result) if hasattr(step.output, 'result') else str(step.output)
-                        if output_text and output_text.strip():
-                            yield trajectory.trajectory_metadata(
-                                title="PythonTool Output",
-                                content=output_text
-                            )
+                        # if output_text and output_text.strip():
+                        #     yield trajectory.trajectory_metadata(
+                        #         title="PythonTool Output",
+                        #         content=output_text
+                        #     )
                         
                         # Capturar archivos generados si existen
                         if hasattr(step.output, 'generated_files'):
                             all_generated_files.extend(step.output.generated_files)
                 
-                elif tool_name == "PSQL":
+                elif tool_name == "DB2":
                     # Extraer la query SQL que se ejecutará
                     query = step.input.get('query', '')
-                    database = step.input.get('database', 'postgres')
+                    database = step.input.get('database', '')
                     
                     if query:
-                        content = f"Database: {database}\n\nQuery:\n```sql\n{query}\n```"
+                        content = f"```sql\n{query}\n```"
                     else:
-                        content = "Ejecutando query SQL..."
+                        content = "Ejecutando query SQL en DB2..."
                     
                     yield trajectory.trajectory_metadata(
-                        title="PSQLTool",
+                        title="DB2Tool",
                         content=content
                     )
                     
@@ -486,77 +483,21 @@ async def example_agent(
                         error_msg = str(step.error)
                         
                         # Construir un mensaje de error detallado
-                        error_details = f"**Error:** {error_msg}\n\n"
-                        error_details += "**Input recibido por el tool:**\n"
-                        
-                        for key, value in step.input.items():
-                            if key == 'query':
-                                # Mostrar solo primeras líneas de la query
-                                query_preview = str(value)[:300]
-                                if len(str(value)) > 300:
-                                    query_preview += "..."
-                                error_details += f"- {key}: {query_preview}\n"
-                            else:
-                                error_details += f"- {key}: {str(value)}\n"
+                        error_details = f"{error_msg}"
                         
                         yield trajectory.trajectory_metadata(
-                            title="PSQLTool Error",
+                            title="DB2Tool Error",
                             content=error_details
                         )
                     # Mostrar output si está disponible
                     elif step.output:
                         # StringToolOutput tiene el texto en .result
                         output_text = str(step.output.result) if hasattr(step.output, 'result') else str(step.output)
-                        if output_text and output_text.strip():
-                            yield trajectory.trajectory_metadata(
-                                title="PSQLTool Output",
-                                content=f"```\n{output_text}\n```"
-                            )
-                
-                elif tool_name == "Wikipedia":
-                    # Extraer la query de búsqueda
-                    query = step.input.get('query', '')
-                    full_text = step.input.get('full_text', False)
-                    
-                    if query:
-                        content = f"Consultando Wikipedia: **{query}**"
-                        if full_text:
-                            content += "\n\n_(Solicitando texto completo)_"
-                    else:
-                        content = "Consultando Wikipedia..."
-                    
-                    yield trajectory.trajectory_metadata(
-                        title="Wikipedia",
-                        content=content
-                    )
-                    
-                    # Verificar si hubo error
-                    if step.error:
-                        error_msg = str(step.error)
-                        yield trajectory.trajectory_metadata(
-                            title="Wikipedia Error",
-                            content=f"**Error:** {error_msg}"
-                        )
-                    # Mostrar output si está disponible
-                    elif step.output:
-                        # WikipediaTool devuelve un output con el contenido del artículo
-                        output_text = str(step.output.result) if hasattr(step.output, 'result') else str(step.output)
-                        
-                        if output_text and len(output_text) > 50:
-                            # Mostrar un preview del contenido (primeros 500 caracteres)
-                            content_preview = output_text[:500]
-                            if len(output_text) > 500:
-                                content_preview += "..."
-                            
-                            yield trajectory.trajectory_metadata(
-                                title="Wikipedia Result",
-                                content=f"Artículo encontrado exitosamente.\n\n{content_preview}"
-                            )
-                        else:
-                            yield trajectory.trajectory_metadata(
-                                title="Wikipedia Result",
-                                content="Consultado exitosamente."
-                            )
+                        # if output_text and output_text.strip():
+                        #     yield trajectory.trajectory_metadata(
+                        #         title="DB2Tool Output",
+                        #         content=output_text
+                        #     )
                 
                 elif tool_name == "final_answer":
                     final_answer_text = step.input["response"]
@@ -567,15 +508,22 @@ async def example_agent(
                     
                     # Si hay archivos generados, procesarlos y reemplazar URNs por URLs
                     if all_generated_files:
+                        print(f"Hay archivos generados")
                         # Extraer URNs del texto de respuesta
-                        urn_pattern = r'urn:bee:file:([a-f0-9]+)'
+                        urn_pattern = r'!?\[([^\]]+)\]\(urn:bee:file:([a-f0-9]+)\)'
                         urns_in_text = re.findall(urn_pattern, final_answer_text)
-                        
+                                
                         # Base URL de la plataforma (usar PUBLIC_PLATFORM_URL para las URLs que ve el usuario)
                         platform_url = os.getenv("PUBLIC_PLATFORM_URL", os.getenv("PLATFORM_URL", "http://127.0.0.1:8334"))
                         
-                        # Mapeo de URN a URL
+                        # Mapeo de URN a URL (para imágenes inline)
                         urn_to_url = {}
+                        
+                        # Lista de archivos CSV para ofrecer como descarga
+                        csv_files = []
+                        
+                        # Diccionario para trackear qué archivos se enviarán como FilePart
+                        csv_file_hashes = set()
                         
                         # Procesar cada archivo generado
                         for file_hash in all_generated_files:
@@ -600,35 +548,68 @@ async def example_agent(
                                 elif file_content.startswith(b'%PDF'):
                                     mime_type = 'application/pdf'
                                     filename = f'document_{file_hash[:8]}.pdf'
-                                
-                                # Subir archivo a la plataforma BeeAI
+                                else:
+                                    # Intentar detectar CSV por contenido
+                                    try:
+                                        text_content = file_content.decode('utf-8')
+                                        # Si tiene comas/tabs y múltiples líneas, probablemente es CSV
+                                        if ('\t' in text_content or ',' in text_content) and '\n' in text_content:
+                                            mime_type = 'text/csv'
+                                            filename = f'data_{file_hash[:8]}.csv'
+                                    except:
+                                        pass
+                                                                
+                                # Subir archivo a la plataforma
                                 platform_file = await File.create(
                                     filename=filename,
                                     content_type=mime_type,
                                     content=file_content,
                                 )
                                 
-                                # Construir URL completa
-                                file_url = f"{platform_url}/api/v1/files/{platform_file.id}/content"
-                                
-                                # Guardar mapeo
-                                urn_to_url[f'urn:bee:file:{file_hash}'] = file_url
+                                # Si es CSV, guardarlo para ofrecerlo como descarga
+                                if mime_type == 'text/csv':
+                                    csv_files.append(platform_file)
+                                    csv_file_hashes.add(file_hash)
+                                else:
+                                    # Para imágenes y otros archivos, construir URL inline
+                                    file_url = f"{platform_url}/api/v1/files/{platform_file.id}/content"
+                                    urn_to_url[f'urn:bee:file:{file_hash}'] = file_url
                         
-                        # Reemplazar URNs en el texto por URLs reales
+                        # Reemplazar URNs en el texto por URLs reales (solo para imágenes)
+                        # Para CSVs, eliminar la referencia completa del texto ya que se enviarán como FilePart
                         modified_text = final_answer_text
-                        for urn, url in urn_to_url.items():
-                            modified_text = modified_text.replace(urn, f"{url}")
+                        for filename, file_hash in urns_in_text:
+                            full_urn = f'urn:bee:file:{file_hash}'
+                            if file_hash in csv_file_hashes:
+                                # Para CSVs: eliminar toda la referencia markdown del texto
+                                # Buscar y eliminar tanto ![filename](urn:...) como [filename](urn:...)
+                                modified_text = re.sub(r'!?\[' + re.escape(filename) + r'\]\(urn:bee:file:' + file_hash + r'\)', '', modified_text)
+                                # Limpiar frases comunes que quedan vacías
+                                modified_text = re.sub(r'(You can download it here:|Puedes descargarlo aquí:|Descarga el archivo:|Download file:)\s*', '', modified_text)
+                            elif full_urn in urn_to_url:
+                                # Para imágenes: reemplazar el URN con la URL real
+                                modified_text = modified_text.replace(full_urn, urn_to_url[full_urn])
 
-                        print(f"Modified text: {modified_text}")
+                        print(f"Modified text (raw): {repr(modified_text)}")
+                        print(f"Modified text (decoded): {modified_text}")
                         
                         # Enviar respuesta con texto modificado
-                        response = AgentMessage(text=modified_text)
+                        yield AgentMessage(text=modified_text)
+                        
+                        # Si hay archivos CSV, enviarlos como FilePart para descarga
+                        for csv_file in csv_files:
+                            print(f"Enviando CSV para descarga: {csv_file.filename}")
+                            yield csv_file.to_file_part()
                     else:
+                        print(f"No hay archivos generados")
+                        print(f"Final answer text (raw): {repr(final_answer_text)}")
+                        print(f"Final answer text (decoded): {final_answer_text}")
+                        
                         # Sin archivos, responder con el texto original
-                        response = AgentMessage(text=final_answer_text)
+                        yield AgentMessage(text=final_answer_text)
                     
-                    yield response
-                    await context.store(response)
+                    # Store final response in context
+                    await context.store(AgentMessage(text=final_answer_text))
 
 def run():
     server.run(
